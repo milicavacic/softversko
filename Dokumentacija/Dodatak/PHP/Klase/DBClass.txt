@@ -1,0 +1,1261 @@
+<?php
+
+header('Content-type=application/json; charset=utf-8');
+
+/*
+opID:
+ 0 - Test ID
+ 1 - Pristup bazi
+ 2 - Dodavanje u bazu
+ 3 - Provera podataka u bazi
+ 4 - Pribavljanje 1 prostog podatka iz baze
+ 5 - Pribavljanje 1 objekta iz baze
+ 6 - Pribavljanje vise objekata iz baze
+ 7 - Izmena podataka u bazi
+ 8 - Brisanje podataka u bazi
+ */
+
+class DBConnection {
+    private $hostname; // Naziv hosta (sajta)
+    private $username; // username za login na phpMyAdmin
+    private $password; // Password za login na phpMyAdmin
+    private $database; // Nasa baza podataka
+    private $conIsSet; // Da li je konekcija uspostavljena
+    
+    public $dbh; // Database Handler
+    
+     public function __construct(){
+        
+    // Podesi nazive promenljivih
+    $this->hostname = "localhost"; 
+    $this->username = "id9832283_andreamilica"; 
+    $this->password = "andreamilica"; 
+    $this->database = "id9832283_andreamilica"; 
+    $this->conIsSet = true; //Inicijalno je konekcija uspostavljena
+    
+    // Pokusaj da uspostavis konekciju
+    try {
+        $this->dbh = new PDO("mysql:host=". $this->hostname .";dbname=". $this->database, $this->username, $this->password);
+        } catch(PDOException $e) {
+            $this->conIsSet=false; // Konekcija nije uspostavljena
+            echo '<h1>An error has occurred.</h1><pre>', $e->getMessage() ,'</pre>';
+        }
+        
+    }
+    
+    public function dodajNovogKorisnika($mUsername, $mPassword,$mIme,$mPrezime,$mPol,
+            $mGodiste,$mVisina,$mMasa){
+        
+    if ($this->conIsSet==false){
+       $jsonNiz=array('opID'=>1,'querySucc'=>false);
+       $jsonStr = json_encode($jsonNiz);
+       echo $jsonStr;
+       return;
+      }
+      
+      // Dodaj prvo grupu, jer korisnik zavisi od nje
+      $dodavanjeGrupe= $this->dodajGrupu($mUsername."_grupa");
+      
+      if ($dodavanjeGrupe==true){ // Ako je grupa kreirana, odradi sve ostalo
+          
+          $IDGrupe = $this->getIDGrupePrekoNaziva($mUsername."_grupa"); 
+          
+          if ($IDGrupe!=-1){
+          
+            // Pokusaj dodavanje korisnika
+          $dodavanjeKorisnika = $this->dodajKorisnikaPrekoIDGrupe($mUsername, $mPassword, $mIme, $mPrezime, $IDGrupe, $mPol, $mGodiste, $mVisina, $mMasa);
+          
+          //Ako je dodavanje korisnika ispravno, vrati podatke o korisniku za cuvanje
+          if ($dodavanjeKorisnika==true){
+			  
+           
+            $selectKveri = $this->dbh->query("SELECT * FROM Korisnik WHERE UsernameString='$mUsername'");
+            $selectKveri->setFetchMode(PDO::FETCH_ASSOC);
+            $resultat = $selectKveri->fetchAll();
+        
+            $uspeh=true;
+            if ($selectKveri==false) // Proverava se uspeh kverija, nikola obrnuto
+                $uspeh=false;		
+			
+				
+
+            $data=null;
+            if (count($resultat)>0){
+                foreach($resultat as $r){
+                    $data=array('id'=>$r['ID'],
+                        'ime'=>$r['Ime'],
+                        'prezime'=>$r['Prezime'],
+                        'username'=>$r['UsernameString'],
+                        'password'=>$r['PasswordString'],
+                        'idGrupe'=>$r['ID_Grupe'],
+                        'pol'=>$r['Pol'],
+                        'godiste'=>$r['Godiste'],
+                        'visina'=>$r['Visina'],
+                        'masa'=>$r['Masa'] );
+                }
+            }
+            
+            $jsonNiz=array('opID'=>5,'querySucc'=>$uspeh,'objID'=>'korisnik','num'=>1,'data'=>$data);
+            $jsonStr = json_encode($jsonNiz);
+            echo $jsonStr;
+            return;
+          } 
+          }
+	  }
+    $jsonNiz=array('opID'=>5,'querySucc'=>false);
+    $jsonStr = json_encode($jsonNiz);
+    echo $jsonStr;
+    return;
+    }
+	
+	/*public function dodajKorisnika($mUsernameKor, $mPassword,$mIme,$mPrezime,$mPol,
+            $mGodiste,$mVisina,$mMasa, $mIdGrupe)
+	{
+		        if ($this->conIsSet==false){
+         $jsonNiz=array('opID'=>1,'querySucc'=>false);
+         $jsonStr = json_encode($jsonNiz);
+         echo $jsonStr;
+        }
+		
+		echo "$mUsernameKor" . "\n";
+		echo "$mPassword" . "\n";
+		echo "$mIme" . "\n";
+		echo "$mPrezime" . "\n";
+		echo "$mPol" . "\n";
+		echo "$mGodiste" . "\n";
+		echo "$mVisina" . "\n";
+		echo "$mMasa" . "\n";
+		
+		
+		
+	 //$insertKveri = $this->dbh->query("INSERT INTO korisnik(Ime, Prezime, Korisnicko_ime, Lozinka, ID_Grupe, Pol, Godiste, Visina, Masa) "
+       //          . " VALUES ('$mIme','$mPrezime','$mUsername','$mPassword', $mIdGrupe, $mPol, $mGodiste, $mVisina, $mMasa);");
+				 
+		$insertKveri = $this->dbh->query("INSERT INTO korisnik(ID_Grupe, Pol, Godiste, Visina, Masa, Ime, Prezime, Lozinka, Korisnicko_ime) VALUES ($mIdGrupe, $mPol, $mGodiste, $mVisina, $mMasa, '$mIme', '$mPrezime', '$mPassword', '$mUsernameKor');");		 
+	
+		//$insertKveri = $this->dbh->query("insert into korisnik (Ime, Prezime, Korisnicko_ime, Lozinka, ID_Grupe, Pol, Godiste, Visina, Masa) values ('$mIme', '$mPrezime', '$mUsername', '$mPassword', 2, $mPol, $mGodiste, $mVisina, $mMasa);");
+		
+		//$insertKveri = $this->dbh->query("INSERT INTO korisnik(Ime, Prezime, Korisnicko_ime, Lozinka, ID_Grupe, Pol, Godiste, Visina, Masa)" .  
+		//" VALUES ('A', 'C', 'ABCCC', '123', 1, 5, 1997, 145, 54)");
+		
+		$uspeh = true;
+		if($insertKveri == false)
+			$uspeh=false;
+		
+		$jsonNiz = array('opID'=>2, 'querySucc' => $uspeh);
+		$jsonStr = json_encode($jsonNiz);
+		echo $jsonStr;		
+		
+	}
+*/
+    
+    public function daLiPostojiUser($usernm){
+        
+        if ($this->conIsSet==false){
+         $jsonNiz=array('opID'=>1,'querySucc'=>false);
+         $jsonStr = json_encode($jsonNiz);
+         echo $jsonStr;
+        }
+        
+        $kveri = $this->dbh->query("SELECT Ime FROM Korisnik WHERE UsernameString='$usernm';");
+        $kveri->setFetchMode(PDO::FETCH_ASSOC);
+        $result = $kveri->fetchAll();
+        
+        $uspeh=true; // Uspesan kveri
+        if (count($result) == 0)
+            $uspeh= false;
+             
+         // Vratimo json string
+         $jsonNiz=array('opID'=>3,'querySucc'=>$uspeh);
+         $jsonStr = json_encode($jsonNiz);
+         echo $jsonStr;   
+    }
+    
+    public function autentifikuj($usernm,$passwrd){
+        
+        if ($this->conIsSet==false){
+         $jsonNiz=array('opID'=>1,'querySucc'=>false);
+         $jsonStr = json_encode($jsonNiz);
+         echo $jsonStr;
+        }
+        
+        $kveri = $this->dbh->query("SELECT Ime FROM Korisnik WHERE UsernameString='$usernm' AND PasswordString='$passwrd';");
+        $kveri->setFetchMode(PDO::FETCH_ASSOC);
+        $result = $kveri->fetchAll();
+        
+        $uspeh=true; // Uspesan kveri
+        if (count($result) == 0)
+            $uspeh= false;
+                
+         // Vratimo json string
+         $jsonNiz=array('opID'=>3,'querySucc'=>$uspeh);
+         $jsonStr = json_encode($jsonNiz);
+         echo $jsonStr;
+            
+    }
+	
+	
+      public function getIDGrupePrekoNaziva($mNaziv)
+    {
+        if ($this->conIsSet==false){
+         return -1;
+        }
+        
+        $kveri = $this->dbh->query("SELECT * FROM Grupa_korisnika WHERE Naziv='$mNaziv'");
+        $kveri->setFetchMode(PDO::FETCH_ASSOC);
+        $result = $kveri->fetchAll();
+        
+        if(count($result) > 0) {
+            foreach($result as $r) {
+                    $ajdi = $r['ID'];
+                }
+        }
+        else // Inace, nijedna grupa nije pronadjena sa zadatim imenom
+            $ajdi=-1;
+        
+        return $ajdi;
+    }
+	
+	
+	public function vratiUniqueNazivGrupe($idGrupe){
+
+        $kveri = $this->dbh->query("SELECT * FROM Grupa_korisnika WHERE ID=$idGrupe");
+        $kveri->setFetchMode(PDO::FETCH_ASSOC);
+        $result = $kveri->fetchAll();
+        
+        //echo json_encode(array('test3'=>'fetchovano'));
+        if(count($result) > 0) {
+            foreach($result as $r) {
+                    $ajdi = $r['Naziv'];
+                }
+        }
+        else // Inace, nijedna grupa nije pronadjena sa zadatim imenom
+            $ajdi="-1";
+        
+        //echo json_encode(array('test4'=>$ajdi));
+        return $ajdi;
+   }
+	
+    public function dodajKorisnikaPrekoIDGrupe($mUsername, $mPassword,$mIme,$mPrezime,$mIDGrupe,$mPol,
+            $mGodiste,$mVisina,$mMasa){
+        
+        if ($this->conIsSet==false){
+            return false;
+        }
+        
+        $insertKveri = $this->dbh->query("INSERT INTO Korisnik(Ime,Prezime,UsernameString,PasswordString,ID_Grupe,"
+                . "Pol,Godiste,Visina,Masa) VALUES ('$mIme','$mPrezime',"
+                . "'$mUsername','$mPassword',$mIDGrupe,$mPol,$mGodiste,$mVisina,$mMasa)");
+        
+        $uspeh=true;
+        if ($insertKveri==false) // Proverava se uspeh kverija
+            $uspeh=false;
+        
+         return $uspeh;
+    }
+    
+    public function test(){
+       // echo "<br/><br/> Test Uspesan! <br/><br/>";
+
+        $jsonNiz=array('opID'=>0,'querySucc'=>'true','secretCode'=>'cao mama');
+        $jsonStr = json_encode($jsonNiz);
+        echo $jsonStr;
+        
+    }
+    
+    public function vratiSveKorisnikeKaoNiz(){
+       
+        if ($this->conIsSet==false){
+         $jsonNiz=array('opID'=>1,'querySucc'=>-1);
+         $jsonStr = json_encode($jsonNiz);
+         echo $jsonStr;
+        }
+        
+        $kveri = $this->dbh->query("SELECT * FROM Korisnik");
+        $kveri->setFetchMode(PDO::FETCH_ASSOC);
+        $rez = $kveri->fetchAll();
+        
+        $niz = array();
+        if(count($rez) > 0) {
+            foreach($rez as $r) {
+                   // $kor = new Korisnik($r['Korisnicko_ime'],$r['Lozinka'],$r['userMode']);
+                    $niz[] = new Korisnik($r['Korisnicko_ime'],$r['Lozinka'],$r['userMode']);
+                }
+        }
+        
+        return $niz;
+    }
+    
+    public function vratiPodatkeOKorisniku($mUsername)
+    {
+       if ($this->conIsSet==false){
+         $jsonNiz=array('opID'=>1,'querySucc'=>false);
+         $jsonStr = json_encode($jsonNiz);
+         echo $jsonStr;
+        }
+        
+        $selectKveri = $this->dbh->query("SELECT * FROM Korisnik WHERE UsernameString='$mUsername'");
+        $selectKveri->setFetchMode(PDO::FETCH_ASSOC);
+        $result = $selectKveri->fetchAll();
+        
+        $uspeh=true;
+        if ($selectKveri==false) // Proverava se uspeh kverija
+            $uspeh=false;
+        
+        $data=null; // Inicijalno, podaci ne postoje
+        if(count($result) > 0) {
+            foreach($result as $r) {
+
+                $data = array('id'=>$r['ID'],
+                    'ime'=>$r['Ime'],
+                    'prezime'=>$r['Prezime'],
+                    'id_grupe'=>$r['ID_Grupe'],
+                    'pol'=>$r['Pol'],
+                    'godiste'=>$r['Godiste'],
+                    'visina'=>$r['Visina'],
+                    'masa'=>$r['Masa']);
+                }
+        }
+        
+        $jsonNiz=array('opID'=>5,'querySucc'=>$uspeh,'objID'=>'podaciOKorisniku','num'=>1,'data'=>$data);
+        $jsonStr = json_encode($jsonNiz);
+        echo $jsonStr;
+    }
+    
+    public function vratiPodatkeOKorisnikuID($mUserID)
+    {
+       if ($this->conIsSet==false){
+         $jsonNiz=array('opID'=>1,'querySucc'=>false);
+         $jsonStr = json_encode($jsonNiz);
+         echo $jsonStr;
+        }
+        
+        $selectKveri = $this->dbh->query("SELECT * FROM Korisnik WHERE ID=$mUserID");
+        $selectKveri->setFetchMode(PDO::FETCH_ASSOC);
+        $result = $selectKveri->fetchAll();
+        
+        $uspeh=true;
+        if ($selectKveri==false) // Proverava se uspeh kverija
+            $uspeh=false;
+        
+        $data=null; // Inicijalno, podaci ne postoje
+        if(count($result) > 0) {
+            foreach($result as $r) {
+
+                $data = array('id'=>$r['ID'],
+                    'ime'=>$r['Ime'],
+                    'prezime'=>$r['Prezime'],
+                    'id_grupe'=>$r['ID_Grupe'],
+                    'pol'=>$r['Pol'],
+                    'godiste'=>$r['Godiste'],
+                    'visina'=>$r['Visina'],
+                    'masa'=>$r['Masa']);
+                }
+        }
+        
+        $jsonNiz=array('opID'=>5,'querySucc'=>$uspeh,'objID'=>'podaciOKorisniku','num'=>1,'data'=>$data);
+        $jsonStr = json_encode($jsonNiz);
+        echo $jsonStr;
+    }
+	
+	
+	 public function dodajGrupu($mNaziv)
+    {
+        if ($this->conIsSet==false){
+         return false;
+        }
+        
+        $insertKveri = $this->dbh->query("INSERT INTO Grupa_korisnika(Naziv) VALUES ('$mNaziv');");
+   
+        $uspeh=true;
+        if ($insertKveri==false) // Proverava se uspeh kverija
+            $uspeh=false;
+        
+        return $uspeh;
+    }
+    
+     public function izmeniKorisnika($idKorisnika, $masa, $visina)
+    {
+        if ($this->conIsSet==false){
+         $jsonNiz=array('opID'=>1,'querySucc'=>false);
+         $jsonStr = json_encode($jsonNiz);
+         echo $jsonStr;
+        }
+        
+        $updateKveri = $this->dbh->query("UPDATE Korisnik SET Masa=$masa, Visina=$visina WHERE ID=$idKorisnika");
+                
+        $uspeh=true;
+        if ($updateKveri==false) // Proverava se uspeh kverija
+            $uspeh=false;
+        
+        $jsonNiz=array('opID'=>7,'querySucc'=>$uspeh);
+         $jsonStr = json_encode($jsonNiz);
+         echo $jsonStr;
+    }
+    public function dodajVezbu($mNaziv, $mOpis, $mTipVezbe)
+    {
+        if ($this->conIsSet==false){
+         $jsonNiz=array('opID'=>1,'querySucc'=>false);
+         $jsonStr = json_encode($jsonNiz);
+         echo $jsonStr;
+        }
+        
+         $insertKveri = $this->dbh->query("INSERT INTO Vezba(Naziv, Opis, TipVezbe) VALUES ('$mNaziv','$mOpis','$mTipVezbe');");
+        
+        $uspeh=true;
+        if ($insertKveri==false) // Proverava se uspeh kverija
+            $uspeh=false;
+        
+         // Vratimo json string
+         $jsonNiz=array('opID'=>2,'querySucc'=>$uspeh);
+         $jsonStr = json_encode($jsonNiz);
+         echo $jsonStr;
+    }
+    public function vratiSveVezbe(){
+        
+        if ($this->conIsSet==false){
+         $jsonNiz=array('opID'=>1,'querySucc'=>false);
+         $jsonStr = json_encode($jsonNiz);
+         echo $jsonStr;
+        }
+        
+        $selectKveri = $this->dbh->query("SELECT * FROM Vezba ");
+        $selectKveri->setFetchMode(PDO::FETCH_ASSOC);
+        $result = $selectKveri->fetchAll();
+        
+        $uspeh = true;
+        if ($selectKveri==false)
+            $uspeh=false;
+        
+        $brojObjekata = count($result);
+        
+        $data=null;
+        if(count($result) > 0) {
+            foreach($result as $r) {
+                    $tVezba = array('id'=>$r['ID'],
+                    'naziv'=>$r['Naziv'],
+                    'opis'=>$r['Opis'],
+                    'tipVezbe' =>$r['TipVezbe']);
+                    
+                    $data[]=$tVezba;
+                }       
+        }
+        
+        $jsonNiz=array('opID'=>6,'querySucc'=>$uspeh,'objID'=>'sveVezbe','num'=>$brojObjekata,'data'=>$data);
+        $jsonStr = json_encode($jsonNiz);
+        echo $jsonStr;
+        
+    }
+    public function dodajKviz($pit, $odgtacan, $funf, $odg1, $odg2, $odg3){
+        
+        if ($this->conIsSet==false){
+         $jsonNiz=array('opID'=>1,'querySucc'=>false);
+         $jsonStr = json_encode($jsonNiz);
+         echo $jsonStr;
+        }
+         $odg = $odgtacan.";".$odg1.";".$odg2.";".$odg3;
+        $insertKveri = $this->dbh->query("INSERT INTO Kviz (Pitanje, Odgovori, Fun_Fact) VALUES ('$pit', '$odg', '$funf');");
+        
+        $uspeh=true;
+        if ($insertKveri==false) // Proverava se uspeh kverija
+            $uspeh=false;
+        
+         // Vratimo json string
+         $jsonNiz=array('opID'=>2,'querySucc'=>$uspeh);
+         $jsonStr = json_encode($jsonNiz);
+         echo $jsonStr;
+            
+    }
+     public function vratiJedanFunFact(){
+        if ($this->conIsSet==false){
+         $jsonNiz=array('opID'=>1,'querySucc'=>false);
+         $jsonStr = json_encode($jsonNiz);
+         echo $jsonStr;
+        }
+        
+        $selectKveri = $this->dbh->query("SELECT * FROM Kviz WHERE ID = (SELECT MAX(ID) FROM Kviz)");
+        $selectKveri->setFetchMode(PDO::FETCH_ASSOC);
+        $result = $selectKveri->fetch();
+        $max = $result['ID'];
+        
+        $selectKveri = $this->dbh->query("SELECT * FROM Kviz WHERE ID = (SELECT MIN(ID) FROM Kviz)");
+        $selectKveri->setFetchMode(PDO::FETCH_ASSOC);
+        $result = $selectKveri->fetch();      
+        $min = $result['ID'];        
+                
+        $broj = rand($min, $max);
+        $selectKveri = $this->dbh->query("SELECT * FROM Kviz WHERE ID = $broj");
+        while ($selectKveri==false)
+        {
+            $selectKveri = $this->dbh->query("SELECT * FROM Kviz WHERE ID = $broj");
+        }
+        $selectKveri->setFetchMode(PDO::FETCH_ASSOC);
+        $result = $selectKveri->fetch(); 
+        $fact = $result['Fun_Fact'];
+                
+        
+        $uspeh=true;
+        if ($selectKveri==false) // Proverava se uspeh kverija
+            $uspeh=false;
+        
+        $data=null; // Inicijalno, podaci ne postoje
+                
+        $jsonNiz=array('opID'=>5,'querySucc'=>$uspeh,'objID'=>$broj,'funFact'=>$fact);
+        $jsonStr = json_encode($jsonNiz);
+        echo $jsonStr;
+    }
+// </editor-fold>
+     public function vratiJedanKviz(){
+        if ($this->conIsSet==false){
+         $jsonNiz=array('opID'=>1,'querySucc'=>false);
+         $jsonStr = json_encode($jsonNiz);
+         echo $jsonStr;
+        }
+        
+        $idKviza = $this->vratiDanasnjiKviz();
+        
+        $selectKveri = $this->dbh->query("SELECT * FROM Kviz WHERE ID=$idKviza");
+        $selectKveri->setFetchMode(PDO::FETCH_ASSOC);
+        $result = $selectKveri->fetchAll();
+        
+        $uspeh=true;
+        if ($selectKveri==false) // Proverava se uspeh kverija
+            $uspeh=false;
+        
+        $data=null; // Inicijalno, podaci ne postoje
+        if(count($result) > 0) {
+            foreach($result as $r) {
+
+                $data = array(
+                    'id'=>$r['ID'],
+                    'pitanje'=>$r['Pitanje'],
+                    'odgovori'=>$r['Odgovori'],
+                    'fun_fact'=>$r['Fun_Fact']);
+                }
+        }
+        
+        $jsonNiz=array('opID'=>5,'querySucc'=>$uspeh,'objID'=>'kviz','num'=>1,'data'=>$data);
+        $jsonStr = json_encode($jsonNiz);
+        echo $jsonStr;
+    }
+     
+    public function vratiDanasnjiKviz(){
+        $seed = floor(time()/86400);
+        srand($seed);
+        
+        $maxBrFunFactova=1;
+        
+        $kveri = $this->dbh->query("SELECT * FROM Kviz");
+        $kveri->setFetchMode(PDO::FETCH_ASSOC);
+        $result = $kveri->fetchAll();
+        
+        $maxBrFunFactova = count($result);
+        
+        $idFF = rand(1,$maxBrFunFactova);
+        
+        return $idFF;
+    }
+    
+  
+  public function dodajVezbuUMojeVezbe($idGrupa, $idVezba)
+    {
+       if ($this->conIsSet==false){
+         $jsonNiz=array('opID'=>1,'querySucc'=>false);
+         $jsonStr = json_encode($jsonNiz);
+         echo $jsonStr;
+        }
+        $selectKveri = $this->dbh->query("SELECT * FROM Sadrzina_mojih_vezbi WHERE Id_Vezba=$idVezba");
+        $selectKveri->setFetchMode(PDO::FETCH_ASSOC);
+        $rezultat = $selectKveri->fetchAll();
+        $grupa=0;
+        $nadjenaGrupa=0;
+        foreach($rezultat as $r) {
+                    $grupa = $r['ID_Grupa'];
+                    if($grupa == $idGrupa)
+                    {
+                        $nadjenaGrupa = $grupa;
+                    }
+                }
+        if(count($rezultat)==0)     // Nije nasao nijednu torku gde postoji vezba sa ovim ID-jem
+        {
+            $vrednost=0;
+            $kveri = $this->dbh->query("INSERT INTO Sadrzina_mojih_vezbi (ID_Grupa, ID_Vezba) values ($idGrupa, $idVezba)");
+        }
+            else if ($nadjenaGrupa == $idGrupa) // Nasao je vezbu, i ona pripada nekoj grupi korisnika 
+        {           
+           
+            $kveri = $this->dbh->query("UPDATE Sadrzina_mojih_vezbi SET Id_Grupa=$idGrupa, Id_Vezba=$idVezba WHERE Id_Vezba=$idVezba");                
+        }
+        else    
+        {       
+            $kveri = $this->dbh->query("INSERT INTO Sadrzina_mojih_vezbi (ID_Grupa, ID_Vezba) values ($idGrupa, $idVezba)");
+        }
+       
+        $uspeh=true;
+        if ($kveri==false) // Proverava se uspeh kverija
+            $uspeh=false;
+        
+        $jsonNiz=array('opID'=>2,'querySucc'=>$uspeh);
+         $jsonStr = json_encode($jsonNiz);
+         echo $jsonStr;
+        
+    }
+    
+    
+  public function pribaviVezbeZaMojeVezbe($idGrupe)
+    {
+        if ($this->conIsSet==false){
+         $jsonNiz=array('opID'=>1,'querySucc'=>false);
+         $jsonStr = json_encode($jsonNiz);
+         echo $jsonStr;
+        }
+        
+        $selectKveri = $this->dbh->query("SELECT VE.Naziv FROM Sadrzina_mojih_vezbi SMV INNER JOIN Vezba VE WHERE VE.ID=SMV.ID_Vezba AND SMV.ID_Grupa=$idGrupe");
+        $selectKveri->setFetchMode(PDO::FETCH_ASSOC);
+        $result = $selectKveri->fetchAll();
+        
+        $uspeh = true;
+        if ($selectKveri==false)
+            $uspeh=false;        
+        $brojObjekata = count($result);
+        
+        foreach ($result as $r)    
+        {
+            $pom = array('naziv' => $r['Naziv']);
+            $data[] = $pom;
+        }
+        
+        $jsonNiz=array('opID'=>6,'querySucc'=>$uspeh,'objID'=>'vezbe','num'=>$brojObjekata,'data'=>$data);
+        $jsonStr = json_encode($jsonNiz);
+        echo $jsonStr;        
+    }
+    
+     public function ukloniVezbuIzMojihVezbi($idGrupe, $nazivVezbe)
+    {
+    if ($this->conIsSet==false){
+         $jsonNiz=array('opID'=>8,'querySucc'=>false);
+         $jsonStr = json_encode($jsonNiz);
+         echo $jsonStr;
+        }
+        
+        $deleteKveri = $this->dbh->query("DELETE FROM Sadrzina_mojih_vezbi WHERE ID_Grupa = $idGrupe AND ID_Vezba = (SELECT ID FROM Vezba WHERE Naziv='$nazivVezbe')");
+        $selectKveri = $this->dbh->query("SELECT ID FROM Vezba WHERE Naziv = '$nazivVezbe'");
+        $selectKveri->setFetchMode(PDO::FETCH_ASSOC);
+        $result = $selectKveri->fetchAll();
+        
+        $ajdi=0;
+        if(count($result) > 0) {
+            foreach($result as $r) {
+                    $ajdi = $r['ID'];
+                }
+        }
+  
+        $uspeh = true;
+        if($deleteKveri == true)
+        {
+            $uspeh = true;
+        }
+        
+        $jsonNiz=array('opID'=>8,'querySucc'=>$uspeh, 'vezbaID'=>$ajdi);
+        $jsonStr = json_encode($jsonNiz);
+        echo $jsonStr;
+    }
+    
+    public function izmeniSet($mIDSeta,$mNaziv,$mSastojci){
+ 
+        if ($this->conIsSet==false){
+         $jsonNiz=array('opID'=>7,'querySucc'=>false);
+         $jsonStr = json_encode($jsonNiz);
+         echo $jsonStr;
+        }
+        
+        $updateKveri = $this->dbh->query("UPDATE Setovi SET Naziv='$mNaziv', Sastojci='$mSastojci' WHERE ID=$mIDSeta");
+        
+        $uspeh=true;
+        if ($updateKveri==false) // Proverava se uspeh kverija
+            $uspeh=false;
+        
+        $jsonNiz=array('opID'=>7,'querySucc'=>$uspeh);
+        $jsonStr = json_encode($jsonNiz);
+        echo $jsonStr;
+    }
+    
+     public function dodajSetZaKorisnika($idKorisnika,$naziv,$sastojci,$tipSeta){
+        
+         if ($this->conIsSet==false){
+         $jsonNiz=array('opID'=>1,'querySucc'=>false);
+         $jsonStr = json_encode($jsonNiz);
+         echo $jsonStr;
+        }
+        
+        $imaSet = $this->daLiKorisnikImaSetProvera($idKorisnika,$naziv);
+        
+        if ($imaSet==false){
+            
+        $insertKveri = $this->dbh->query("INSERT INTO Setovi (Naziv, Sastojci,ID_Vlasnika,TipSeta ) VALUES ('$naziv', '$sastojci','$idKorisnika', '$tipSeta');");
+        
+        $uspeh=true;
+        if ($insertKveri==false) // Proverava se uspeh kverija
+            $uspeh=false;
+        }
+        else
+            $uspeh=false;
+        
+         // Vratimo json string
+         $jsonNiz=array('opID'=>2,'querySucc'=>$uspeh);
+         $jsonStr = json_encode($jsonNiz);
+         echo $jsonStr;
+         
+    }
+     public function daLiKorisnikImaSetProvera($idUser,$naziv){
+        
+        if ($this->conIsSet==false){
+         return false;
+        }
+        
+        $kveri = $this->dbh->query("SELECT ID FROM Setovi WHERE ID_Vlasnika=$idUser AND Naziv IN ('$naziv');");
+        $kveri->setFetchMode(PDO::FETCH_ASSOC);
+        $result = $kveri->fetchAll();
+        
+        $uspeh=true; // Uspesan kveri
+        if (count($result) == 0)
+            $uspeh= false;
+                
+         return $uspeh;
+    }
+     public function daLiKorisnikImaSet($idKorisnik,$naziv){
+        
+        if ($this->conIsSet==false){
+         $jsonNiz=array('opID'=>1,'querySucc'=>false);
+         $jsonStr = json_encode($jsonNiz);
+         echo $jsonStr;
+        }
+        
+        $kveri = $this->dbh->query("SELECT ID FROM Setovi WHERE ID_Vlasnika=$idKorisnik AND Naziv IN ('$naziv');");
+        $kveri->setFetchMode(PDO::FETCH_ASSOC);
+        $result = $kveri->fetchAll();
+        
+        $uspeh=true; // Uspesan kveri
+        if (count($result) == 0)
+            $uspeh= false;
+                
+         // Vratimo json string
+         $jsonNiz=array('opID'=>3,'querySucc'=>$uspeh);
+         $jsonStr = json_encode($jsonNiz);
+         echo $jsonStr;
+            
+    }
+    
+    public function dodajSetZaGrupu($idKorisnika,$naziv,$grupaID){
+        
+         if ($this->conIsSet==false){
+         $jsonNiz=array('opID'=>1,'querySucc'=>false);
+         $jsonStr = json_encode($jsonNiz);
+         echo $jsonStr;
+        }
+        
+        $setID = $this->vratiIDSeta($idKorisnika,$naziv);
+        //echo json_encode($receptID);
+        // Ispitaj i vrati da li postoji taj recept kod korisnika
+        if ($setID!=-1){
+        $insertKveri = $this->dbh->query("INSERT INTO Setovi_Grupe (ID_Grupa, ID_Setovi) VALUES ($grupaID, $setID);");
+        
+        $uspeh=true;
+        if ($insertKveri==false) // Proverava se uspeh kverija
+            $uspeh=false;
+        }
+        else
+            $uspeh=false;
+        
+         // Vratimo json string
+         $jsonNiz=array('opID'=>2,'querySucc'=>$uspeh);
+         $jsonStr = json_encode($jsonNiz);
+         echo $jsonStr;
+         
+    }
+    
+     public function vratiIDSeta($korisnikID,$naziv){
+        
+        if ($this->conIsSet==false){
+         return -1;
+        }
+        
+        $kveri = $this->dbh->query("SELECT * FROM Setovi WHERE ID_Vlasnika=$korisnikID AND Naziv='$naziv'");
+        $kveri->setFetchMode(PDO::FETCH_ASSOC);
+        $result = $kveri->fetchAll();
+        
+        if(count($result) > 0) {
+            foreach($result as $r) {
+                    $ajdi = $r['ID'];
+                }
+        }
+        else // Inace, nijedna grupa nije pronadjena sa zadatim imenom
+            $ajdi=-1;
+        
+        return $ajdi;
+    }
+    
+    public function vratiJedanSet($mIDSeta) {
+         if ($this->conIsSet==false){
+         $jsonNiz=array('opID'=>1,'querySucc'=>false);
+         $jsonStr = json_encode($jsonNiz);
+         echo $jsonStr;
+        }
+        
+        $selectKveri = $this->dbh->query("SELECT * FROM Setovi WHERE ID=$mIDSeta");
+        $selectKveri->setFetchMode(PDO::FETCH_ASSOC);
+        $result = $selectKveri->fetchAll();
+        
+        $uspeh=true;
+        if ($selectKveri==false) // Proverava se uspeh kverija
+            $uspeh=false;
+        
+        $data=null; // Inicijalno, podaci ne postoje
+        if(count($result) > 0) {
+            foreach($result as $r) {
+
+                $data = array('id'=>$r['ID'],
+                    'naziv'=>$r['Naziv'],
+                    'sastojci'=>$r['Sastojci'],
+                    'vlasnik'=>$r['ID_Vlasnika'],
+					'tipSeta'=>$r['TipSeta']);
+                }
+        }
+        
+        $jsonNiz=array('opID'=>5,'querySucc'=>$uspeh,'objID'=>'kviz','num'=>1,'data'=>$data);
+        $jsonStr = json_encode($jsonNiz);
+        echo $jsonStr;
+    }
+    
+    public function vratiSetoveKorisnika($idKorisnika){
+        
+        if ($this->conIsSet==false){
+         $jsonNiz=array('opID'=>1,'querySucc'=>false);
+         $jsonStr = json_encode($jsonNiz);
+         echo $jsonStr;
+        }
+        
+        $selectKveri = $this->dbh->query("SELECT * FROM Setovi WHERE ID_Vlasnika=$idKorisnika");
+        
+        $selectKveri->setFetchMode(PDO::FETCH_ASSOC);
+        $result = $selectKveri->fetchAll();
+        
+        $uspeh = true;
+        
+        $brojObjekata = count($result);
+        
+        $data=null;
+        if(count($result) > 0) {
+            foreach($result as $r) {
+                    // Populisemo trenutni recept podacima
+                    $tSet = array('id'=>$r['ID'],
+                     'naziv'=>$r['Naziv'],
+                        'sastojci'=>$r['Sastojci'],
+                        'id_vlasnika'=>$r['ID_Vlasnika'],
+						'tipSeta'=>$r['TipSeta']
+                        
+                        );
+                    
+                    // Dodamo recept u glavni niz
+                    $data[]=$tSet;
+                }       
+        }
+        
+        $jsonNiz=array('opID'=>6,'querySucc'=>$uspeh,'objID'=>'setoviKorisnika','num'=>$brojObjekata,'data'=>$data);
+        $jsonStr = json_encode($jsonNiz);
+        echo $jsonStr;
+    }
+    
+    public function obrisiSet($idSeta){
+        
+        if ($this->conIsSet==false){
+         $jsonNiz=array('opID'=>8,'querySucc'=>false);
+         $jsonStr = json_encode($jsonNiz);
+         echo $jsonStr;
+        }
+        
+        $delKveri0 = $this->dbh->query("DELETE FROM Setovi_Grupe WHERE ID_Setovi=$idSeta");
+        $delKveri1 = $this->dbh->query("DELETE FROM Setovi WHERE ID=$idSeta");
+        
+        $uspeh=false;
+        if ($delKveri1==true && $delKveri0==true) // Proverava se uspeh kverija
+            $uspeh=true;
+        
+        $jsonNiz=array('opID'=>8,'querySucc'=>$uspeh);
+        $jsonStr = json_encode($jsonNiz);
+        echo $jsonStr;
+    }
+     public function vratiSetoveGrupe($idGrupe){
+        
+        if ($this->conIsSet==false){
+         $jsonNiz=array('opID'=>1,'querySucc'=>false);
+         $jsonStr = json_encode($jsonNiz);
+         echo $jsonStr;
+        }
+        
+        $selectKveri = $this->dbh->query("SELECT * FROM Setovi r, Setovi_Grupe rg, Korisnik k WHERE rg.ID_Setovi=r.ID AND r.ID_Vlasnika=k.ID AND rg.ID_Grupa=$idGrupe");
+        
+        $selectKveri->setFetchMode(PDO::FETCH_ASSOC);
+        $result = $selectKveri->fetchAll();
+        
+        $uspeh = true;
+        if ($selectKveri==false)
+            $uspeh=false;
+        
+        $brojObjekata = count($result);
+        
+        $data=null;
+        if(count($result) > 0) {
+            foreach($result as $r) {
+                    $tSet = array('id'=>$r['ID'],
+                        'sastojci'=>$r['Sastojci'],
+                        'id_vlasnika'=>$r['ID_Vlasnika'],
+                        'username'=>$r['UsernameString'],
+                        'naziv'=>$r['Naziv']
+                        );
+                    
+                    $data[]=$tSet;
+                }       
+        }
+        
+        $jsonNiz=array('opID'=>6,'querySucc'=>$uspeh,'objID'=>'setoviGrupe','num'=>$brojObjekata,'data'=>$data);
+        $jsonStr = json_encode($jsonNiz);
+        echo $jsonStr;
+    }
+      public function daLiJeUSvojojGrupi($username){
+        
+        if ($this->conIsSet==false){
+         $jsonNiz=array('opID'=>1,'querySucc'=>false);
+         $jsonStr = json_encode($jsonNiz);
+         echo $jsonStr;
+        }
+    
+        $idGrupe = $this->getIDGrupePrekoNaziva($username."_grupa");
+        
+        $brClanovaUGrupi=0;
+        $uspeh=false;
+        if ($idGrupe>-1){
+            
+            $kveri = $this->dbh->query("SELECT COUNT(*) AS 'broj' FROM Korisnik WHERE ID_Grupe=$idGrupe");
+            //echo json_encode(array('yes'=>$idGrupe));
+            $kveri->setFetchMode(PDO::FETCH_ASSOC);
+            $result = $kveri->fetch();
+            
+            if(count($result) > 0) {
+                foreach($result as $r) {
+                    $brClanovaUGrupi= $result['broj'];
+                    $uspeh=true;
+                }
+            }
+            
+            
+        }
+         $jsonNiz=array('opID'=>6,'querySucc'=>$uspeh,'brClanova'=>$brClanovaUGrupi);
+        $jsonStr = json_encode($jsonNiz);
+        echo $jsonStr;
+        
+    }
+    
+  public function premestiKorisnikaUGrupu($idGrupe,$username){
+        
+        if ($this->conIsSet==false){
+         $jsonNiz=array('opID'=>1,'querySucc'=>false);
+         $jsonStr = json_encode($jsonNiz);
+         echo $jsonStr;
+        }
+    
+        $idStareGrupe = $this->getIDGrupePrekoNaziva($username."_grupa");
+        $idZaPovratak=-1;
+        $uspeh=false;
+        if ($idStareGrupe>-1){
+            
+        $premestanjeKorisnika = $this->premestiKorisnike($idStareGrupe,$idGrupe);
+        if ($premestanjeKorisnika==true){
+            
+            $premestanjeSetova = $this->premestiSetoveGrupe($idStareGrupe,$idGrupe);
+            if ($premestanjeSetova==true){
+                
+                $premestanjeMojihVezbi = $this->premestiSadrzinuMojihVezbi($idStareGrupe,$idGrupe);
+                if ($premestanjeMojihVezbi==true){
+                    
+                    $uspeh=true;
+                    $idZaPovratak = $idGrupe;
+                
+                }
+            }
+        }
+     }
+        
+        $jsonNiz=array('opID'=>6,'querySucc'=>$uspeh,'idNoveGrupe'=>$idZaPovratak);
+        $jsonStr = json_encode($jsonNiz);
+        echo $jsonStr;
+        
+    }
+    public function premestiKorisnike($idStareGrupe,$idNoveGrupe){
+       if ($this->conIsSet==false){
+         return false;
+        }
+        
+        $kveri = $this->dbh->query("UPDATE Korisnik SET ID_Grupe=$idNoveGrupe WHERE ID_Grupe=$idStareGrupe");
+        $uspeh=true;
+        
+        return $uspeh;
+   }
+   
+    public function premestiSetoveGrupe($idStareGrupe,$idNoveGrupe){
+       if ($this->conIsSet==false){
+         return false;
+        }
+        
+        $kveri = $this->dbh->query("UPDATE Setovi_Grupe SET ID_Grupa=$idNoveGrupe WHERE ID_Grupa=$idStareGrupe");
+        
+        $uspeh=true;
+        
+        return $uspeh;
+   }
+    public function premestiSadrzinuMojihVezbi($idStareGrupe,$idNoveGrupe){
+       if ($this->conIsSet==false){
+         return false;
+        }
+        
+        
+        
+        $kveri = $this->dbh->query("SELECT * FROM Sadrzina_mojih_vezbi WHERE ID_Grupa=$idStareGrupe");
+        $kveri->setFetchMode(PDO::FETCH_ASSOC);
+        $result = $kveri->fetchAll();
+        
+        if (count($result)>0){
+            foreach($result as $r){
+                $vez = $r['ID_Vezba'];
+                $this->dodajVezbuUMojuVezbePriv($idNoveGrupe,$vez);
+            }
+        }
+        
+        $uspeh=true;
+        return $uspeh;
+   }
+   
+     public function dodajVezbuUMojuVezbePriv($idGrupa, $idVezba)
+    {
+       if ($this->conIsSet==false){
+         return false;
+        }
+        $selectKveri = $this->dbh->query("SELECT * FROM Sadrzina_mojih_vezbi WHERE Id_Vezba=$idVezba");
+        $selectKveri->setFetchMode(PDO::FETCH_ASSOC);
+        $rezultat = $selectKveri->fetchAll();
+        $grupa=0;
+        $nadjenaGrupa=0;
+        foreach($rezultat as $r) {
+                    $grupa = $r['ID_Grupa'];
+                    if($grupa == $idGrupa)
+                    {
+                        $nadjenaGrupa = $grupa;
+                    }
+                }
+        if(count($rezultat)==0)    
+        {
+            $kveri = $this->dbh->query("INSERT INTO Sadrzina_mojih_vezbi (ID_Grupa, ID_Vezba) values ($idGrupa, $idVezba)");
+        }
+            else if ($nadjenaGrupa == $idGrupa) 
+        {           
+            $kveri = $this->dbh->query("UPDATE Sadrzina_mojih_vezbi SET Id_Grupa=$idGrupa, Id_Vezba=$idVezba WHERE Id_Vezba=$idVezba");                
+        }
+        else     
+        {       
+            $kveri = $this->dbh->query("INSERT INTO Sadrzina_mojih_vezbi (ID_Grupa, ID_Vezba) values ($idGrupa, $idVezba)");
+        }
+       
+        $uspeh=true;
+        if ($kveri==false) // Proverava se uspeh kverija
+            $uspeh=false;
+        
+        return $uspeh;
+        
+    }
+      public function dodajKorisnikaUZajednickuGrupu($idGrupe,$username){
+        
+        if ($this->conIsSet==false){
+         $jsonNiz=array('opID'=>1,'querySucc'=>false);
+         $jsonStr = json_encode($jsonNiz);
+         echo $jsonStr;
+        }
+    
+        $idStareGrupe = $this->getIDGrupePrekoNaziva($username."_grupa");
+        $idZaPovratak=-1;
+        $uspeh=false;
+        if ($idStareGrupe>-1){
+            
+        $premestanjeKorisnika = $this->premestiKorisnike($idStareGrupe,$idGrupe);
+        if ($premestanjeKorisnika==true){
+            
+            $premestanjeSetova = $this->premestiSetoveGrupe($idStareGrupe,$idGrupe);
+            if ($premestanjeSetova==true){
+                
+                $premestanjeSadrzajaMojihVezbi = $this->premestiSadrzinuMojihVezbi($idStareGrupe,$idGrupe);
+                if ($premestanjeSadrzajaMojihVezbi==true){
+                    $promeniGrupu= $this->kreirajNovuGrupu($idGrupe);
+                    if ($promeniGrupu>0){
+                        $uspeh=true;
+                        $idZaPovratak = $promeniGrupu;
+                    }
+                }
+            }
+        }
+     }
+        
+        $jsonNiz=array('opID'=>6,'querySucc'=>$uspeh,'idNoveGrupe'=>$idZaPovratak);
+        $jsonStr = json_encode($jsonNiz);
+        echo $jsonStr;
+        
+    }
+        
+    public function kreirajNovuGrupu($idGrupe){
+
+       $nazivStareGrupe = $this->vratiUniqueNazivGrupe($idGrupe);
+     // echo json_encode(array('test'=>$idGrupe));
+      $idNoveGrupe=-1;
+      $uspeh=false;
+       
+      if ($nazivStareGrupe!="-1"){ // Ako je grupa kreirana, odradi sve ostalo
+       
+         $nazivNoveGrupeIme = $nazivStareGrupe."_zajednica_".rand();
+         $dodavanjeNoveGrupe= $this->dodajGrupu($nazivNoveGrupeIme);
+         
+         if ($dodavanjeNoveGrupe==true){
+            $idNoveGrupe = $this->getIDGrupePrekoNaziva($nazivNoveGrupeIme);
+            
+            if ($idNoveGrupe!=-1){
+             
+            $premestanjeKorisnika = $this->premestiKorisnike($idGrupe,$idNoveGrupe);
+            if ($premestanjeKorisnika==true){
+                $premestanjeSetova = $this->premestiSetoveGrupe($idGrupe,$idNoveGrupe);
+                if ($premestanjeSetova==true){
+                    $premestanjeSadrzajaMojihVezbi = $this->premestiSadrzinuMojihVezbi($idGrupe,$idNoveGrupe);
+                    if ($premestanjeSadrzajaMojihVezbi==true){
+                        $uspeh=true;
+                    }
+                }
+            }
+         }
+        }
+      }
+        
+       if ($uspeh==true)
+        return $idNoveGrupe;
+       else
+        return -1;
+    }
+    
+    
+    // </editor-fold>
+   
+   // <editor-fold desc="vratiKorisnikaUGrupu-ddj" defaultstate="collapsed">
+    
+    public function vratiKorisnikaUGrupu($idGrupe,$username){
+        
+        if ($this->conIsSet==false){
+         $jsonNiz=array('opID'=>1,'querySucc'=>false);
+         $jsonStr = json_encode($jsonNiz);
+         echo $jsonStr;
+        }
+         
+        $idNoveGrupe = $this->getIDGrupePrekoNaziva($username."_grupa");
+        
+        $uspeh=false;
+        if ($idNoveGrupe>-1){
+             
+        $premestanjeKorisnika = $this->premestiKorisnika($idNoveGrupe,$username);
+        if ($premestanjeKorisnika==true){
+           // echo json_encode(array('signal2'=>$idNoveGrupe));
+            $premestanjeSetove = $this->premestiSetoveKorisnika($idNoveGrupe,$username);
+            if ($premestanjeSetove==true){
+                $uspeh=true;
+                $idZaPovratak = $idNoveGrupe;
+            }
+        }
+     }
+        
+        $jsonNiz=array('opID'=>6,'querySucc'=>$uspeh);
+        $jsonStr = json_encode($jsonNiz);
+        echo $jsonStr;
+        
+    }
+    
+     public function premestiKorisnika($idGrupe,$username){
+       if ($this->conIsSet==false){
+         return false;
+        }
+        
+        $kveri = $this->dbh->query("UPDATE Korisnik SET ID_Grupe=$idGrupe WHERE UsernameString='$username'");
+        $uspeh=true;
+        
+        return $uspeh;
+   }
+     public function premestiSetoveKorisnika($idGrupe,$username){
+        if ($this->conIsSet==false){
+         return false;
+        }
+        
+        $selectKveri = $this->dbh->query("SELECT rec.* FROM Setovi rec, Korisnik kor WHERE rec.ID_Vlasnika=kor.ID AND kor.UsernameString='$username'");
+        $selectKveri->setFetchMode(PDO::FETCH_ASSOC);
+        $result = $selectKveri->fetchAll();
+        
+        $uspeh=true;
+        if ($selectKveri==false) // Proverava se uspeh kverija
+            $uspeh=false;
+        
+        if(count($result) > 0) {
+            foreach($result as $r) {
+
+                $setID=$r['ID'];
+                $updateKveri = $this->dbh->query("UPDATE Setovi_Grupe SET ID_Grupa=$idGrupe WHERE ID_Setovi=$setID");
+                }
+        }
+        
+        return true;
+    }
+    
+     public function vratiKorisnikeGrupe($idGrupe){
+        
+        
+        if ($this->conIsSet==false){
+         $jsonNiz=array('opID'=>1,'querySucc'=>false);
+         $jsonStr = json_encode($jsonNiz);
+         echo $jsonStr;
+        }
+
+        $selectKveri = $this->dbh->query("SELECT * FROM Korisnik WHERE ID_Grupe IN ($idGrupe)");
+        $selectKveri->setFetchMode(PDO::FETCH_ASSOC);
+        $result = $selectKveri->fetchAll();
+        
+        $uspeh = true;
+        if ($selectKveri==false)
+            $uspeh=false;
+        
+        $brojObjekata = count($result);
+        
+        $data=null;
+        if(count($result) > 0) {
+            foreach($result as $r) {
+                    // Populisemo trenutnog korisnika podacima
+                    $tUser = array('id'=>$r['ID'],
+                        'ime'=>$r['Ime'],
+                        'prezime'=>$r['Prezime'],
+                        'username'=>$r['UsernameString']
+                        );
+                    
+                    // Dodamo korisnika u glavni niz
+                    $data[]=$tUser;
+                }       
+        }
+        
+        $jsonNiz=array('opID'=>6,'querySucc'=>$uspeh,'objID'=>'korisniciGrupe','num'=>$brojObjekata,'data'=>$data);
+        $jsonStr = json_encode($jsonNiz);
+        echo $jsonStr;
+    }
+    
+    
+    
+    
+}
+?>
